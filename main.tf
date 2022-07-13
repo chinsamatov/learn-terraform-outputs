@@ -1,3 +1,4 @@
+#The configuration in main.tf defines a web application, including a VPC, load balancer, EC2 instances, and a database.
 terraform {
   required_providers {
     aws = {
@@ -21,9 +22,9 @@ module "vpc" {
 
   cidr = var.vpc_cidr_block
 
-  azs             = data.aws_availability_zones.available.names
-  private_subnets = slice(var.private_subnet_cidr_blocks, 0, 2)
-  public_subnets  = slice(var.public_subnet_cidr_blocks, 0, 2)
+  azs             = data.aws_availability_zones.available.names #4 subnets, 2 per AZ, just A & B ????
+  private_subnets = slice(var.private_subnet_cidr_blocks, 0, 2) #list: 0,1,2,3,4,5,6,7 => 0,1 = 2
+  public_subnets  = slice(var.public_subnet_cidr_blocks, 0, 2) #list: 0,1,2,3,4,5,6,7 => 0,1 = 2
 
   enable_nat_gateway = true
   enable_vpn_gateway = false
@@ -37,7 +38,7 @@ module "app_security_group" {
   description = "Security group for web-servers with HTTP ports open within VPC"
   vpc_id      = module.vpc.vpc_id
 
-  ingress_cidr_blocks = module.vpc.public_subnets_cidr_blocks
+  ingress_cidr_blocks = module.vpc.public_subnets_cidr_blocks #one of the outputs of the VPC module passed
 }
 
 module "lb_security_group" {
@@ -66,9 +67,9 @@ module "elb_http" {
   internal = false
 
   security_groups = [module.lb_security_group.this_security_group_id]
-  subnets         = module.vpc.public_subnets
+  subnets         = module.vpc.public_subnets #PUBLIC GUYS ONLY
 
-  number_of_instances = length(module.ec2_instances.instance_ids)
+  number_of_instances = length(module.ec2_instances.instance_ids) #all ec2s
   instances           = module.ec2_instances.instance_ids
 
   listener = [{
@@ -89,17 +90,19 @@ module "elb_http" {
 
 module "ec2_instances" {
   source = "./modules/aws-instance"
-
+                      #default = 2          *          # 0, 1 = 2    =   4 
   instance_count     = var.instances_per_subnet * length(module.vpc.private_subnets)
   instance_type      = var.instance_type
-  subnet_ids         = module.vpc.private_subnets[*]
-  security_group_ids = [module.app_security_group.this_security_group_id]
+  subnet_ids         = module.vpc.private_subnets[*] #0, 1 = 2
+  security_group_ids = [module.app_security_group.this_security_group_id] #access the value via SG output
 }
 
+#https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/db_subnet_group
 resource "aws_db_subnet_group" "private" {
   subnet_ids = module.vpc.private_subnets
 }
 
+#https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/db_instance
 resource "aws_db_instance" "database" {
   allocated_storage = 5
   engine            = "mysql"
